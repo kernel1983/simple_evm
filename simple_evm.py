@@ -21,12 +21,71 @@ class VM:
         if self.code[self.pc] == 0x00:
             return
 
+        elif self.code[self.pc] == 0x01: # ADD
+            pass
+
+        elif self.code[self.pc] == 0x02: # MUL
+            pass
+
+        elif self.code[self.pc] == 0x03: # SUB
+            pass
+
+        elif self.code[self.pc] == 0x04: # DIV
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'little')
+            a = self.stack.pop()
+            left = int.from_bytes(a, 'little')
+            result = int(right/left).to_bytes(4, 'little')
+            self.stack.append(result)
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x05: # SDIV
+            pass
+
+        elif self.code[self.pc] == 0x06: # MOD
+            pass
+
+        elif self.code[self.pc] == 0x07: # SMOD
+            pass
+
+        elif self.code[self.pc] == 0x08: # ADDMOD
+            pass
+
+        elif self.code[self.pc] == 0x09: # MULMOD
+            pass
+
+        elif self.code[self.pc] == 0x0a: # EXP
+            pass
+
+        elif self.code[self.pc] == 0x0b: # SIGNEXTEND
+            pass
+
         elif self.code[self.pc] == 0x10: # LT
             b = self.stack.pop()
             right = int.from_bytes(b, 'little')
             a = self.stack.pop()
             left = int.from_bytes(a, 'little')
             self.stack.append(bytes([left < right]))
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x16: # AND
+            pass
+
+        elif self.code[self.pc] == 0x17: # OR
+            pass
+
+        elif self.code[self.pc] == 0x18: # XOR
+            pass
+
+        elif self.code[self.pc] == 0x19: # NOT
+            pass
+
+        elif self.code[self.pc] == 0x35: # CALLDATALOAD
+            i = self.stack.pop()
+            mc = int.from_bytes(i, 'little')
+            result = self.msg[mc:mc+32]
+            result += bytes([0]*(32-len(result)))
+            self.stack.append(result)
             self.pc += 1
 
         elif self.code[self.pc] == 0x36: # CALLDATASIZE
