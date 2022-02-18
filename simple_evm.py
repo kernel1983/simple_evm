@@ -15,7 +15,7 @@ class VM:
 
     def step(self):
         print('Pc:', self.pc, 'Opcode:', hex(self.code[self.pc]))
-        print('Stack before:', self.stack)
+        print('Stack before:', [[hex(b) for b in s] for s in self.stack])
         print('Mem before:', self.memory)
 
         if self.code[self.pc] == 0x00:
@@ -50,6 +50,16 @@ class VM:
         elif self.code[self.pc] == 0x54: # SLOAD
             pass
 
+        elif self.code[self.pc] == 0x57: # JUMPI
+            dist = self.stack.pop()
+            cond = self.stack.pop()
+            if(ord(cond)):
+                self.pc = int.from_bytes(dist, 'little')
+            else:
+                self.pc += 1
+
+        elif self.code[self.pc] == 0x5b: # JUMPDEST
+            self.pc += 1
 
         elif self.code[self.pc] >= 0x60 and self.code[self.pc] <= 0x7f: # PUSHx bytes
             size = self.code[self.pc] - 0x5f
@@ -59,7 +69,7 @@ class VM:
         else:
             raise
 
+        print('Stack after:', [[hex(b) for b in s] for s in self.stack])
         print('Mem after:', self.memory)
-        print('Stack after:', self.stack)
         print('------\n')
 
