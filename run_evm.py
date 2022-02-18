@@ -8,5 +8,7 @@ code_bytes = binascii.unhexlify(code_hex)
 msg_bytes = b'\x12\x06\x5f\xe0'
 
 m = VM(code_bytes, msg_bytes)
-for i in range(20):
+pc = None
+while pc != m.pc:
+    pc = m.pc
     m.step()

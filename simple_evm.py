@@ -68,8 +68,34 @@ class VM:
             self.stack.append(bytes([left < right]))
             self.pc += 1
 
-        elif self.code[self.pc] == 0x16: # AND
+        elif self.code[self.pc] == 0x11: # GT
             pass
+
+        elif self.code[self.pc] == 0x12: # SLT
+            pass
+
+        elif self.code[self.pc] == 0x13: # SLT
+            pass
+
+        elif self.code[self.pc] == 0x14: # EQ
+            b = self.stack.pop()
+            a = self.stack.pop()
+            self.stack.append(bytes([a == b]))
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x15: # ISZERO
+            pass
+
+        elif self.code[self.pc] == 0x16: # AND
+            b = self.stack.pop()
+            a = self.stack.pop()
+            assert len(b) == len(a)
+
+            result = []
+            for i in range(len(b)):
+                result.append(b[i] & a[i])
+            self.stack.append(bytes(result))
+            self.pc += 1
 
         elif self.code[self.pc] == 0x17: # OR
             pass
@@ -78,6 +104,18 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0x19: # NOT
+            pass
+
+        elif self.code[self.pc] == 0x1a: # BYTE
+            pass
+
+        elif self.code[self.pc] == 0x1b: # SHL
+            pass
+
+        elif self.code[self.pc] == 0x1c: # SHR
+            pass
+
+        elif self.code[self.pc] == 0x1d: # SAR
             pass
 
         elif self.code[self.pc] == 0x35: # CALLDATALOAD
@@ -113,17 +151,22 @@ class VM:
             dist = self.stack.pop()
             cond = self.stack.pop()
             if(ord(cond)):
-                self.pc = int.from_bytes(dist, 'little')
+                self.pc = int.from_bytes(dist, 'big')
             else:
                 self.pc += 1
 
         elif self.code[self.pc] == 0x5b: # JUMPDEST
             self.pc += 1
 
-        elif self.code[self.pc] >= 0x60 and self.code[self.pc] <= 0x7f: # PUSHx bytes
+        elif self.code[self.pc] >= 0x60 and self.code[self.pc] <= 0x7f: # PUSHx
             size = self.code[self.pc] - 0x5f
             self.stack.append(self.code[self.pc+1:self.pc+1+size])
             self.pc += 1+size
+
+        elif self.code[self.pc] >= 0x80 and  self.code[self.pc] <= 0x8f: # DUPx
+            size = self.code[self.pc] - 0x7f
+            self.stack.append(self.stack[-size])
+            self.pc += 1
 
         else:
             raise
