@@ -21,7 +21,12 @@ state = {
         "nonce": 0,
         'code': code_bytes,
         "storage": {}
-    }
+    },
+    SENDER: {
+        "balance": 100000000000000000,
+        "nonce": 0,
+        "storage": {}
+    },
 }
 
 m = VM(state, msg)

@@ -1,3 +1,4 @@
+import binascii
 
 # reference to https://ethervm.io/
 class VM:
@@ -16,7 +17,9 @@ class VM:
 
     def step(self):
         print('Pc:', self.pc, 'Opcode:', hex(self.code[self.pc]))
-        print('Stack before:', [[hex(b) for b in s] for s in self.stack])
+        print('Stack before:')
+        for i in self.stack:
+            print('', binascii.hexlify(i))
         print('Mem before:', self.memory)
 
         if self.code[self.pc] == 0x00:
@@ -33,10 +36,10 @@ class VM:
 
         elif self.code[self.pc] == 0x04: # DIV
             b = self.stack.pop()
-            right = int.from_bytes(b, 'little')
+            right = int.from_bytes(b, 'big')
             a = self.stack.pop()
-            left = int.from_bytes(a, 'little')
-            result = int(right/left).to_bytes(4, 'little')
+            left = int.from_bytes(a, 'big')
+            result = int(right/left).to_bytes(32, 'big')
             self.stack.append(result)
             self.pc += 1
 
@@ -63,14 +66,19 @@ class VM:
 
         elif self.code[self.pc] == 0x10: # LT
             b = self.stack.pop()
-            right = int.from_bytes(b, 'little')
+            right = int.from_bytes(b, 'big')
             a = self.stack.pop()
-            left = int.from_bytes(a, 'little')
+            left = int.from_bytes(a, 'big')
             self.stack.append(bytes([left < right]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x11: # GT
-            pass
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
+            a = self.stack.pop()
+            left = int.from_bytes(a, 'big')
+            self.stack.append(bytes([left > right]))
+            self.pc += 1
 
         elif self.code[self.pc] == 0x12: # SLT
             pass
@@ -97,10 +105,9 @@ class VM:
         elif self.code[self.pc] == 0x16: # AND
             b = self.stack.pop()
             a = self.stack.pop()
-            assert len(b) == len(a)
 
             result = []
-            for i in range(len(b)):
+            for i in range(32):
                 result.append(b[i] & a[i])
             self.stack.append(bytes(result))
             self.pc += 1
@@ -134,7 +141,9 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x31: # BALANCE
-            pass
+            address = self.stack.pop()
+            self.stack.append(self.state[address]['balance'].to_bytes(32, 'big'))
+            self.pc += 1
 
         elif self.code[self.pc] == 0x32: # ORIGIN
             self.stack.append(self.msg['origin'])
@@ -150,14 +159,14 @@ class VM:
 
         elif self.code[self.pc] == 0x35: # CALLDATALOAD
             i = self.stack.pop()
-            mc = int.from_bytes(i, 'little')
-            result = self.msg['data'][mc:mc+32]
-            result += bytes([0]*(32-len(result)))
+            mc = int.from_bytes(i, 'big')
+            data = self.msg['data'][mc:mc+32]
+            result = data+bytes([0]*(32-len(data)))
             self.stack.append(result)
             self.pc += 1
 
         elif self.code[self.pc] == 0x36: # CALLDATASIZE
-            self.stack.append(bytes([len(self.msg['data'])]))
+            self.stack.append(len(self.msg['data']).to_bytes(32, 'big'))
             self.pc += 1
 
         elif self.code[self.pc] == 0x50: # POP
@@ -167,16 +176,20 @@ class VM:
         elif self.code[self.pc] == 0x52: # MSTORE offset value
             value = self.stack.pop()
             offset = self.stack.pop()
-            print(offset, value)
-            mc = int.from_bytes(offset, 'little')
-            self.alloc(mc + 4)
+            mc = int.from_bytes(offset, 'big')
+            self.alloc(mc + 32)
             for b in value:
                 self.memory[mc] = b
                 mc += 1
             self.pc += 1
 
         elif self.code[self.pc] == 0x53: # MSTORE8 offset value
-            pass
+            value = self.stack.pop()
+            offset = self.stack.pop()
+            mc = int.from_bytes(offset, 'big')
+            self.alloc(mc + 1)
+            self.memory[mc] = value[0]
+            self.pc += 1
 
         elif self.code[self.pc] == 0x54: # SLOAD
             pass
@@ -201,13 +214,19 @@ class VM:
 
         elif self.code[self.pc] >= 0x60 and self.code[self.pc] <= 0x7f: # PUSHx
             size = self.code[self.pc] - 0x5f
-            self.stack.append(self.code[self.pc+1:self.pc+1+size])
-            self.pc += 1+size
+            self.stack.append(bytes([0]*(32-size)) + self.code[self.pc+1:self.pc+1+size])
+            self.pc += size+1
 
         elif self.code[self.pc] >= 0x80 and  self.code[self.pc] <= 0x8f: # DUPx
             size = self.code[self.pc] - 0x7f
             self.stack.append(self.stack[-size])
             self.pc += 1
+
+        elif self.code[self.pc] >= 0x90 and  self.code[self.pc] <= 0x9f: # SWAPx
+            pass
+
+        elif self.code[self.pc] >= 0xA0 and  self.code[self.pc] <= 0xA4: # LOGx
+            pass
 
         elif self.code[self.pc] == 0xfd: # REVERT
             pass
@@ -215,7 +234,9 @@ class VM:
         else:
             raise
 
-        print('Stack after:', [[hex(b) for b in s] for s in self.stack])
+        print('Stack after:')
+        for i in self.stack:
+            print('', binascii.hexlify(i))
         print('Mem after:', self.memory)
         print('------\n')
 
