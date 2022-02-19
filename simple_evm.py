@@ -94,12 +94,12 @@ class VM:
 
         elif self.code[self.pc] == 0x15: # ISZERO
             bs = self.stack.pop()
-            result = b'\x01'
+            result = 1
             for b in bs:
                 if b > 0:
-                    result = b'\x01'
+                    result = 0
                     break
-            self.stack.append(result)
+            self.stack.append(result.to_bytes(32, 'big'))
             self.pc += 1
 
         elif self.code[self.pc] == 0x16: # AND
@@ -154,7 +154,7 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x34: # CALLVALUE
-            self.stack.append(self.msg['value'].to_bytes(2, 'big'))
+            self.stack.append(self.msg['value'].to_bytes(32, 'big'))
             self.pc += 1
 
         elif self.code[self.pc] == 0x35: # CALLDATALOAD
@@ -173,9 +173,17 @@ class VM:
             self.stack.pop()
             self.pc += 1
 
-        elif self.code[self.pc] == 0x52: # MSTORE offset value
-            value = self.stack.pop()
+        elif self.code[self.pc] == 0x51: # MLOAD
             offset = self.stack.pop()
+            mc = int.from_bytes(offset, 'big')
+            data = bytes(self.memory[mc:mc+32])
+            result = data+bytes([0]*(32-len(data)))
+            self.stack.append(result)
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x52: # MSTORE offset value
+            offset = self.stack.pop()
+            value = self.stack.pop()
             mc = int.from_bytes(offset, 'big')
             self.alloc(mc + 32)
             for b in value:
@@ -184,8 +192,8 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x53: # MSTORE8 offset value
-            value = self.stack.pop()
             offset = self.stack.pop()
+            value = self.stack.pop()
             mc = int.from_bytes(offset, 'big')
             self.alloc(mc + 1)
             self.memory[mc] = value[0]
@@ -204,7 +212,7 @@ class VM:
         elif self.code[self.pc] == 0x57: # JUMPI
             dist = self.stack.pop()
             cond = self.stack.pop()
-            if(ord(cond)):
+            if(int.from_bytes(cond, 'big')):
                 self.pc = int.from_bytes(dist, 'big')
             else:
                 self.pc += 1
@@ -223,9 +231,14 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] >= 0x90 and  self.code[self.pc] <= 0x9f: # SWAPx
-            pass
+            size = self.code[self.pc] - 0x8f
+            self.stack[-1], self.stack[-1-size] = self.stack[-1-size], self.stack[-1] 
+            self.pc += 1
 
         elif self.code[self.pc] >= 0xA0 and  self.code[self.pc] <= 0xA4: # LOGx
+            pass
+
+        elif self.code[self.pc] == 0xf3: # RETURN
             pass
 
         elif self.code[self.pc] == 0xfd: # REVERT
