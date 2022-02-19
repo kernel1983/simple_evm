@@ -137,10 +137,12 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0x32: # ORIGIN
-            pass
+            self.stack.append(self.msg['origin'])
+            self.pc += 1
 
         elif self.code[self.pc] == 0x33: # CALLER
-            pass
+            self.stack.append(self.msg['sender'])
+            self.pc += 1
 
         elif self.code[self.pc] == 0x34: # CALLVALUE
             self.stack.append(self.msg['value'].to_bytes(2, 'big'))
@@ -155,7 +157,11 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x36: # CALLDATASIZE
-            self.stack.append(bytes([len(self.msg)]))
+            self.stack.append(bytes([len(self.msg['data'])]))
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x50: # POP
+            self.stack.pop()
             self.pc += 1
 
         elif self.code[self.pc] == 0x52: # MSTORE offset value
@@ -174,6 +180,13 @@ class VM:
 
         elif self.code[self.pc] == 0x54: # SLOAD
             pass
+
+        elif self.code[self.pc] == 0x55: # SSTORE
+            pass
+
+        elif self.code[self.pc] == 0x56: # JUMP
+            dist = self.stack.pop()
+            self.pc = int.from_bytes(dist, 'big')
 
         elif self.code[self.pc] == 0x57: # JUMPI
             dist = self.stack.pop()
@@ -195,6 +208,9 @@ class VM:
             size = self.code[self.pc] - 0x7f
             self.stack.append(self.stack[-size])
             self.pc += 1
+
+        elif self.code[self.pc] == 0xfd: # REVERT
+            pass
 
         else:
             raise
