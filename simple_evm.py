@@ -1,9 +1,10 @@
 
 # reference to https://ethervm.io/
 class VM:
-    def __init__(self, code, msg) -> None:
+    def __init__(self, state, msg) -> None:
         self.msg = msg
-        self.code = code
+        self.state = state
+        self.code = state[self.msg['address']]['code']
         self.pc = 0
         self.memory = []
         self.stack = []
@@ -84,7 +85,14 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x15: # ISZERO
-            pass
+            bs = self.stack.pop()
+            result = b'\x01'
+            for b in bs:
+                if b > 0:
+                    result = b'\x01'
+                    break
+            self.stack.append(result)
+            self.pc += 1
 
         elif self.code[self.pc] == 0x16: # AND
             b = self.stack.pop()
@@ -118,10 +126,30 @@ class VM:
         elif self.code[self.pc] == 0x1d: # SAR
             pass
 
+        elif self.code[self.pc] == 0x20: # SHA3
+            pass
+
+        elif self.code[self.pc] == 0x30: # ADDRESS
+            self.stack.append(self.msg['address'])
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x31: # BALANCE
+            pass
+
+        elif self.code[self.pc] == 0x32: # ORIGIN
+            pass
+
+        elif self.code[self.pc] == 0x33: # CALLER
+            pass
+
+        elif self.code[self.pc] == 0x34: # CALLVALUE
+            self.stack.append(self.msg['value'].to_bytes(2, 'big'))
+            self.pc += 1
+
         elif self.code[self.pc] == 0x35: # CALLDATALOAD
             i = self.stack.pop()
             mc = int.from_bytes(i, 'little')
-            result = self.msg[mc:mc+32]
+            result = self.msg['data'][mc:mc+32]
             result += bytes([0]*(32-len(result)))
             self.stack.append(result)
             self.pc += 1
