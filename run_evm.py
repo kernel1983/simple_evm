@@ -33,4 +33,6 @@ m = VM(state, msg)
 pc = None
 while pc != m.pc:
     pc = m.pc
-    m.step()
+    r = m.step()
+    print("return value")
+    print(r)

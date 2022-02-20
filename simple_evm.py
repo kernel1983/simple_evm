@@ -26,13 +26,49 @@ class VM:
             return
 
         elif self.code[self.pc] == 0x01: # ADD
-            pass
+            '''
+            branch action :
+                for exec the "ADD" op
+            example : 0x03 0x02 ADD => 0x05
+            '''
+            # pop the op number
+            last_bytes = self.stack.pop() # the last item
+            first_bytes = self.stack.pop()
 
+            # the endian use the "big"
+            last_num = int.from_bytes(last_bytes, 'big', signed=True)# the signed must set True for the negative number
+            first_num = int.from_bytes(first_bytes, 'big', signed=True)
+
+            # computer the result  ! note the value 32 is for make the bytes len == 32
+            result = (first_num + last_num).to_bytes(32, 'big', signed=True)# the signed must set True for the negative number
+
+            # push to the stack (the result)
+            self.stack.append(result)
+            self.pc += 1
+    
         elif self.code[self.pc] == 0x02: # MUL
             pass
 
         elif self.code[self.pc] == 0x03: # SUB
-            pass
+            '''
+            branch action :
+                for exec the "SUB" op
+            example : 0x03 0x02 SUB => 0x01
+            '''
+            # pop the op number
+            last_bytes = self.stack.pop() # the last item
+            first_bytes = self.stack.pop()
+
+            # the endian use the "big"
+            last_num = int.from_bytes(last_bytes, 'big', signed=True) # the signed must set True for the negative number
+            first_num = int.from_bytes(first_bytes, 'big', signed=True)
+
+            # computer the result  ! note the value 32 is for make the bytes len == 32
+            result = (first_num - last_num).to_bytes(32, 'big', signed=True) # the signed must set True for the negative number
+
+            # push to the stack (the result)
+            self.stack.append(result)
+            self.pc += 1
 
         elif self.code[self.pc] == 0x04: # DIV
             b = self.stack.pop()
@@ -239,7 +275,23 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0xf3: # RETURN
-            pass
+            '''
+            branch action :
+                for exec the "RETURN" op
+            example : memory[offset:offset+length]
+            '''
+            # pop the op number
+            offset_bytes = self.stack.pop()
+            length_bytes = self.stack.pop()
+
+            # the endian use the "big"
+            offset_num = int.from_bytes(offset_bytes, 'big', signed=True) # the signed must set True for the negative number
+            length_num = int.from_bytes(length_bytes, 'big', signed=True)
+
+            # ! I think should assert the offset and the length must be positive number
+
+            # return the value
+            return self.memory[offset_num : offset_num + length_num]
 
         elif self.code[self.pc] == 0xfd: # REVERT
             pass
