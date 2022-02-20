@@ -28,8 +28,8 @@ class VM:
         elif self.code[self.pc] == 0x01: # ADD
             '''
             branch action :
-                for exec the "SUB" op
-            example : 0x03 0x02 ADD => 0x01
+                for exec the "ADD" op
+            example : 0x03 0x02 ADD => 0x05
             '''
             # pop the op number
             last_bytes = self.stack.pop() # the last item
