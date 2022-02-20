@@ -39,7 +39,7 @@ class VM:
             last_num = int.from_bytes(last_bytes, 'big', signed=True)# the signed must set True for the negative number
             first_num = int.from_bytes(first_bytes, 'big', signed=True)
 
-            # computer the result  ! note the value 32 is for make the bytes len == 10
+            # computer the result  ! note the value 32 is for make the bytes len == 32
             result = (first_num + last_num).to_bytes(32, 'big', signed=True)# the signed must set True for the negative number
 
             # push to the stack (the result)
@@ -63,7 +63,7 @@ class VM:
             last_num = int.from_bytes(last_bytes, 'big', signed=True) # the signed must set True for the negative number
             first_num = int.from_bytes(first_bytes, 'big', signed=True)
 
-            # computer the result  ! note the value 32 is for make the bytes len == 10 
+            # computer the result  ! note the value 32 is for make the bytes len == 32
             result = (first_num - last_num).to_bytes(32, 'big', signed=True) # the signed must set True for the negative number
 
             # push to the stack (the result)
