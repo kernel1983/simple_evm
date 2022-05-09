@@ -1,5 +1,7 @@
 import binascii
 
+UINT_256_MAX = 2**256 - 1
+
 # reference to https://ethervm.io/
 class VM:
     def __init__(self, state, msg) -> None:
@@ -16,13 +18,15 @@ class VM:
                 self.memory.append(0x00)
 
     def step(self):
+        print('------')
         print('Pc:', self.pc, 'Opcode:', hex(self.code[self.pc]))
         print('Stack before:')
         for i in self.stack:
             print('', binascii.hexlify(i))
         print('Mem before:', self.memory)
 
-        if self.code[self.pc] == 0x00:
+        if self.code[self.pc] == 0x00: # STOP
+            print('STOP')
             return
 
         elif self.code[self.pc] == 0x01: # ADD
@@ -101,19 +105,21 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0x10: # LT
+            print('LT')
             b = self.stack.pop()
             right = int.from_bytes(b, 'big')
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
-            self.stack.append(bytes([left < right]))
+            self.stack.append(bytes([0]*31+[left < right]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x11: # GT
+            print('GT')
             b = self.stack.pop()
             right = int.from_bytes(b, 'big')
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
-            self.stack.append(bytes([left > right]))
+            self.stack.append(bytes([0]*31+[left > right]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x12: # SLT
@@ -129,6 +135,7 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x15: # ISZERO
+            print('ISZERO')
             bs = self.stack.pop()
             result = 1
             for b in bs:
@@ -164,7 +171,16 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0x1c: # SHR
-            pass
+            i = self.stack.pop()
+            value = int.from_bytes(i, 'big')
+            i = self.stack.pop()
+            shift = int.from_bytes(i, 'big')
+            if shift >= 256:
+                result = 0
+            else:
+                result = (value >> shift) & UINT_256_MAX
+            self.stack.append(result.to_bytes(32, 'big'))
+            self.pc += 1
 
         elif self.code[self.pc] == 0x1d: # SAR
             pass
@@ -294,7 +310,19 @@ class VM:
             return self.memory[offset_num : offset_num + length_num]
 
         elif self.code[self.pc] == 0xfd: # REVERT
-            pass
+            print('REVERT')
+            # pop the op number
+            offset_bytes = self.stack.pop()
+            length_bytes = self.stack.pop()
+
+            # the endian use the "big"
+            offset_num = int.from_bytes(offset_bytes, 'big', signed=True) # the signed must set True for the negative number
+            length_num = int.from_bytes(length_bytes, 'big', signed=True)
+
+            # ! I think should assert the offset and the length must be positive number
+
+            # return the value
+            return self.memory[offset_num : offset_num + length_num]
 
         else:
             raise
@@ -303,5 +331,4 @@ class VM:
         for i in self.stack:
             print('', binascii.hexlify(i))
         print('Mem after:', self.memory)
-        print('------\n')
 
