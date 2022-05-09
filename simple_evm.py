@@ -1,6 +1,9 @@
 import binascii
 
 UINT_256_MAX = 2**256 - 1
+UINT_256_CEILING = 2**256
+UINT_255_MAX = 2**255 - 1
+UINT_255_CEILING = 2**255
 
 # reference to https://ethervm.io/
 class VM:
@@ -123,15 +126,35 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x12: # SLT
-            pass
+            print('SLT')
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
+            if right > UINT_255_MAX:
+                return right - UINT_256_CEILING
+            a = self.stack.pop()
+            left = int.from_bytes(a, 'big')
+            if left > UINT_255_MAX:
+                return left - UINT_256_CEILING
+            self.stack.append(bytes([0]*31+[left < right]))
+            self.pc += 1
 
-        elif self.code[self.pc] == 0x13: # SLT
-            pass
+        elif self.code[self.pc] == 0x13: # SGT
+            print('SGT')
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
+            if right > UINT_255_MAX:
+                return right - UINT_256_CEILING
+            a = self.stack.pop()
+            left = int.from_bytes(a, 'big')
+            if left > UINT_255_MAX:
+                return left - UINT_256_CEILING
+            self.stack.append(bytes([0]*31+[left > right]))
+            self.pc += 1
 
         elif self.code[self.pc] == 0x14: # EQ
             b = self.stack.pop()
             a = self.stack.pop()
-            self.stack.append(bytes([a == b]))
+            self.stack.append(bytes([0]*31+[a == b]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x15: # ISZERO
@@ -168,17 +191,32 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0x1b: # SHL
-            pass
-
-        elif self.code[self.pc] == 0x1c: # SHR
-            i = self.stack.pop()
-            value = int.from_bytes(i, 'big')
+            print('SHL')
             i = self.stack.pop()
             shift = int.from_bytes(i, 'big')
+            print('shift', shift)
+            i = self.stack.pop()
+            value = int.from_bytes(i, 'big')
+            print('value', value)
             if shift >= 256:
                 result = 0
             else:
-                result = (value >> shift) & UINT_256_MAX
+                result = value << shift
+            self.stack.append(result.to_bytes(32, 'big'))
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x1c: # SHR
+            print('SHR')
+            i = self.stack.pop()
+            shift = int.from_bytes(i, 'big')
+            print('shift', shift)
+            i = self.stack.pop()
+            value = int.from_bytes(i, 'big')
+            print('value', value)
+            if shift >= 256:
+                result = 0
+            else:
+                result = value >> shift
             self.stack.append(result.to_bytes(32, 'big'))
             self.pc += 1
 
@@ -198,18 +236,22 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x32: # ORIGIN
+            print('ORIGIN')
             self.stack.append(self.msg['origin'])
             self.pc += 1
 
         elif self.code[self.pc] == 0x33: # CALLER
+            print('CALLER')
             self.stack.append(self.msg['sender'])
             self.pc += 1
 
         elif self.code[self.pc] == 0x34: # CALLVALUE
+            print('CALLVALUE')
             self.stack.append(self.msg['value'].to_bytes(32, 'big'))
             self.pc += 1
 
         elif self.code[self.pc] == 0x35: # CALLDATALOAD
+            print('CALLDATALOAD')
             i = self.stack.pop()
             mc = int.from_bytes(i, 'big')
             data = self.msg['data'][mc:mc+32]
@@ -218,14 +260,17 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x36: # CALLDATASIZE
+            print('CALLDATASIZE')
             self.stack.append(len(self.msg['data']).to_bytes(32, 'big'))
             self.pc += 1
 
         elif self.code[self.pc] == 0x50: # POP
+            print('POP')
             self.stack.pop()
             self.pc += 1
 
         elif self.code[self.pc] == 0x51: # MLOAD
+            print('MLOAD')
             offset = self.stack.pop()
             mc = int.from_bytes(offset, 'big')
             data = bytes(self.memory[mc:mc+32])
@@ -234,6 +279,7 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x52: # MSTORE offset value
+            print('MSTORE')
             offset = self.stack.pop()
             value = self.stack.pop()
             mc = int.from_bytes(offset, 'big')
@@ -262,6 +308,7 @@ class VM:
             self.pc = int.from_bytes(dist, 'big')
 
         elif self.code[self.pc] == 0x57: # JUMPI
+            print('JUMPI')
             dist = self.stack.pop()
             cond = self.stack.pop()
             if(int.from_bytes(cond, 'big')):
@@ -270,10 +317,12 @@ class VM:
                 self.pc += 1
 
         elif self.code[self.pc] == 0x5b: # JUMPDEST
+            print('JUMPDEST', self.pc)
             self.pc += 1
 
         elif self.code[self.pc] >= 0x60 and self.code[self.pc] <= 0x7f: # PUSHx
             size = self.code[self.pc] - 0x5f
+            print('PUSH', size)
             self.stack.append(bytes([0]*(32-size)) + self.code[self.pc+1:self.pc+1+size])
             self.pc += size+1
 
@@ -291,6 +340,7 @@ class VM:
             pass
 
         elif self.code[self.pc] == 0xf3: # RETURN
+            print('RETURN')
             '''
             branch action :
                 for exec the "RETURN" op

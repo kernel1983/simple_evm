@@ -34,5 +34,4 @@ pc = None
 while pc != m.pc:
     pc = m.pc
     r = m.step()
-    print("return value")
-    print(r)
+    print("return value", r)
