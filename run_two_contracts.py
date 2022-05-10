@@ -47,6 +47,8 @@
 
 import binascii
 
+from eth_utils import keccak
+
 from simple_evm import VM
 
 # ADDRESS = b'\x85\x82\xa2\x89\x02\xb9\xae\x93\xfc\x03\xdd\xb4\xae\xae\xe1\x8e\x85\x93\x12\xc1'
@@ -72,7 +74,9 @@ state = {
         "balance": 0,
         "nonce": 0,
         'code': DataContract_bytecode,
-        "storage": {}
+        "storage": {
+            keccak(b'\x00'*12+SENDER+b'\x00'*32): binascii.unhexlify(b'0000000000000000000000000000000000000000000000000000000000000010')
+        }
     },
     ControlContract_address: {
         "balance": 0,
@@ -88,7 +92,7 @@ state = {
 }
 
 msg = {
-    'data': binascii.unhexlify('0x70a08231'[2:]), # "balanceOf"
+    'data': binascii.unhexlify('0x70a08231'[2:])+b'\x00'*12+SENDER, # "balanceOf"
     # 'value': int.from_bytes(SENDER, 'big'),
     'value': 0,
     'origin': SENDER,
@@ -101,5 +105,5 @@ pc = None
 while pc != m.pc:
     pc = m.pc
     r = m.step()
-    print("return value", r)
-
+    if r:
+        print("return value", r)

@@ -1,5 +1,7 @@
 import binascii
 
+from eth_hash.auto import keccak
+
 UINT_256_MAX = 2**256 - 1
 UINT_256_CEILING = 2**256
 UINT_255_MAX = 2**255 - 1
@@ -63,25 +65,22 @@ class VM:
             example : 0x03 0x02 SUB => 0x01
             '''
             # pop the op number
-            last_bytes = self.stack.pop() # the last item
-            first_bytes = self.stack.pop()
+            a = self.stack.pop() # the last item
+            left = int.from_bytes(a, 'big')
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
 
-            # the endian use the "big"
-            last_num = int.from_bytes(last_bytes, 'big', signed=True) # the signed must set True for the negative number
-            first_num = int.from_bytes(first_bytes, 'big', signed=True)
-
-            # computer the result  ! note the value 32 is for make the bytes len == 32
-            result = (first_num - last_num).to_bytes(32, 'big', signed=True) # the signed must set True for the negative number
+            result = (left - right).to_bytes(32, 'big')
 
             # push to the stack (the result)
             self.stack.append(result)
             self.pc += 1
 
         elif self.code[self.pc] == 0x04: # DIV
-            b = self.stack.pop()
-            right = int.from_bytes(b, 'big')
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
             result = int(right/left).to_bytes(32, 'big')
             self.stack.append(result)
             self.pc += 1
@@ -109,45 +108,46 @@ class VM:
 
         elif self.code[self.pc] == 0x10: # LT
             print('LT')
-            b = self.stack.pop()
-            right = int.from_bytes(b, 'big')
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
             self.stack.append(bytes([0]*31+[left < right]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x11: # GT
             print('GT')
-            b = self.stack.pop()
-            right = int.from_bytes(b, 'big')
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
             self.stack.append(bytes([0]*31+[left > right]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x12: # SLT
             print('SLT')
-            b = self.stack.pop()
-            right = int.from_bytes(b, 'big')
-            if right > UINT_255_MAX:
-                return right - UINT_256_CEILING
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
             if left > UINT_255_MAX:
                 return left - UINT_256_CEILING
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
+            if right > UINT_255_MAX:
+                return right - UINT_256_CEILING
+            print(left, right)
             self.stack.append(bytes([0]*31+[left < right]))
             self.pc += 1
 
         elif self.code[self.pc] == 0x13: # SGT
             print('SGT')
-            b = self.stack.pop()
-            right = int.from_bytes(b, 'big')
-            if right > UINT_255_MAX:
-                return right - UINT_256_CEILING
             a = self.stack.pop()
             left = int.from_bytes(a, 'big')
             if left > UINT_255_MAX:
                 return left - UINT_256_CEILING
+            b = self.stack.pop()
+            right = int.from_bytes(b, 'big')
+            if right > UINT_255_MAX:
+                return right - UINT_256_CEILING
             self.stack.append(bytes([0]*31+[left > right]))
             self.pc += 1
 
@@ -221,16 +221,27 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x1d: # SAR
-            pass
+            print('SAR')
 
         elif self.code[self.pc] == 0x20: # SHA3
-            pass
+            print('SHA3')
+            offset = self.stack.pop()
+            mc = int.from_bytes(offset, 'big')
+            length = self.stack.pop()
+            l = int.from_bytes(length, 'big')
+            data = bytes(self.memory[mc:mc+l])
+            hash = keccak(data)
+            self.stack.append(hash)
+            print('SHA3', data, hash)
+            self.pc += 1
 
         elif self.code[self.pc] == 0x30: # ADDRESS
+            print('ADDRESS')
             self.stack.append(self.msg['address'])
             self.pc += 1
 
         elif self.code[self.pc] == 0x31: # BALANCE
+            print('BALANCE')
             address = self.stack.pop()
             self.stack.append(self.state[address]['balance'].to_bytes(32, 'big'))
             self.pc += 1
@@ -281,7 +292,9 @@ class VM:
         elif self.code[self.pc] == 0x52: # MSTORE offset value
             print('MSTORE')
             offset = self.stack.pop()
+            print('MSTORE offset', offset)
             value = self.stack.pop()
+            print('MSTORE value', value)
             mc = int.from_bytes(offset, 'big')
             self.alloc(mc + 32)
             for b in value:
@@ -290,6 +303,7 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x53: # MSTORE8 offset value
+            print('MSTORE8')
             offset = self.stack.pop()
             value = self.stack.pop()
             mc = int.from_bytes(offset, 'big')
@@ -298,12 +312,18 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x54: # SLOAD
-            pass
+            print('SLOAD')
+            key = self.stack.pop()
+            print(self.state[self.msg['address']]['storage'])
+            value = self.state[self.msg['address']]['storage'][key]
+            self.stack.append(value)
+            self.pc += 1
 
         elif self.code[self.pc] == 0x55: # SSTORE
-            pass
+            print('SSTORE')
 
         elif self.code[self.pc] == 0x56: # JUMP
+            print('JUMP')
             dist = self.stack.pop()
             self.pc = int.from_bytes(dist, 'big')
 
@@ -328,11 +348,13 @@ class VM:
 
         elif self.code[self.pc] >= 0x80 and  self.code[self.pc] <= 0x8f: # DUPx
             size = self.code[self.pc] - 0x7f
+            print('DUP', size)
             self.stack.append(self.stack[-size])
             self.pc += 1
 
         elif self.code[self.pc] >= 0x90 and  self.code[self.pc] <= 0x9f: # SWAPx
             size = self.code[self.pc] - 0x8f
+            print('SWAP', size)
             self.stack[-1], self.stack[-1-size] = self.stack[-1-size], self.stack[-1] 
             self.pc += 1
 
@@ -368,8 +390,6 @@ class VM:
             # the endian use the "big"
             offset_num = int.from_bytes(offset_bytes, 'big', signed=True) # the signed must set True for the negative number
             length_num = int.from_bytes(length_bytes, 'big', signed=True)
-
-            # ! I think should assert the offset and the length must be positive number
 
             # return the value
             return self.memory[offset_num : offset_num + length_num]
