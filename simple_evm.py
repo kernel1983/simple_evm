@@ -25,10 +25,10 @@ class VM:
     def step(self):
         print('------')
         print('Pc:', self.pc, 'Opcode:', hex(self.code[self.pc]))
-        print('Stack before:')
-        for i in self.stack:
-            print('', binascii.hexlify(i))
-        print('Mem before:', self.memory)
+        # print('Stack before:')
+        # for i in self.stack:
+        #     print('', binascii.hexlify(i))
+        # print('Mem before:', self.memory)
 
         if self.code[self.pc] == 0x00: # STOP
             print('STOP')
@@ -81,7 +81,7 @@ class VM:
             left = int.from_bytes(a, 'big')
             b = self.stack.pop()
             right = int.from_bytes(b, 'big')
-            result = int(right/left).to_bytes(32, 'big')
+            result = int(left/right).to_bytes(32, 'big')
             self.stack.append(result)
             self.pc += 1
 

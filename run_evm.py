@@ -1,7 +1,38 @@
 
 import binascii
 
+from eth_hash.auto import keccak
+
 from simple_evm import VM
+
+"""
+pragma solidity ^0.4.24;
+
+contract GetValues {
+    function getMeaningOfLife() public pure returns (uint256) {
+        return 42;
+    }
+    function getGasPrice() public view returns (uint256) {
+        return tx.gasprice;
+    }
+    function getBalance() public view returns (uint256) {
+        return msg.sender.balance;
+    }
+    function doRevert() public pure {
+        revert("always reverts");
+    }
+    function useLotsOfGas() public view {
+        uint size;
+        for (uint i = 0; i < 2**255; i++){
+            assembly {
+                size := extcodesize(0)
+            }
+        }
+    }
+}
+"""
+
+print([hex(i) for i in keccak(b'getBalance()')[:4]])
 
 ADDRESS = b'\x85\x82\xa2\x89\x02\xb9\xae\x93\xfc\x03\xdd\xb4\xae\xae\xe1\x8e\x85\x93\x12\xc1'
 SENDER = b'\xae\x03\x02\x18\x87\xc2\x22\x37\x6f\x12\xca\xf0\x21\x44\xa1\x2f\x19\x19\x92\xcf'
@@ -23,7 +54,7 @@ state = {
         "storage": {}
     },
     SENDER: {
-        "balance": 100000000000000000,
+        "balance": 10,
         "nonce": 0,
         "storage": {}
     },
