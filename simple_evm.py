@@ -321,6 +321,12 @@ class VM:
 
         elif self.code[self.pc] == 0x55: # SSTORE
             print('SSTORE')
+            key = self.stack.pop()
+            value = self.stack.pop()
+            print(self.state[self.msg['address']]['storage'])
+            self.state[self.msg['address']]['storage'][key] = value
+            print(self.state[self.msg['address']]['storage'])
+            self.pc += 1
 
         elif self.code[self.pc] == 0x56: # JUMP
             print('JUMP')

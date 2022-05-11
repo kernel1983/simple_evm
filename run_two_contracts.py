@@ -92,7 +92,8 @@ state = {
 }
 
 msg = {
-    'data': binascii.unhexlify('0x70a08231'[2:])+b'\x00'*12+SENDER, # "balanceOf"
+    # 'data': binascii.unhexlify('0x70a08231'[2:])+b'\x00'*12+SENDER, # 'balanceOf'
+    'data': binascii.unhexlify('0x1e10f2fe'[2:])+b'\x00'*12+SENDER + b'\x00'*31+b'\x01', # 'setBlance'
     # 'value': int.from_bytes(SENDER, 'big'),
     'value': 0,
     'origin': SENDER,
