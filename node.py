@@ -14,8 +14,8 @@ import tornado.httpserver
 import tornado.gen
 import tornado.escape
 
-import web3
 # import rlp
+import web3
 import trie
 
 class Application(tornado.web.Application):
@@ -37,8 +37,8 @@ for i in range(10):
 latest_block_height = 0
 latest_block_hash = GENSIS_BLOCK
 latest_block = {
+    # 'hash': latest_block_hash,
     'number': hex(latest_block_height),
-    'hash': latest_block_hash,
     'parentHash': '0x0000000000000000000000000000000000000000000000000000000000000000',
     'nonce': '0x0000000000000000',
     'transactionsRoot': '0x%s' % transactions_tree.root_hash.hex(),
@@ -66,6 +66,9 @@ class MainHandler(tornado.web.RequestHandler):
         pass
 
     def post(self):
+        global latest_block_height
+        global latest_block_hash
+
         self.add_header('access-control-allow-methods', 'OPTIONS, POST')
         self.add_header('access-control-allow-origin', 'moz-extension://52ed146e-8386-4e74-9dae-5fe4e9ae20c8')
 
@@ -76,15 +79,14 @@ class MainHandler(tornado.web.RequestHandler):
             resp = {'jsonrpc':'2.0', 'result': hex(520), 'id':rpc_id}
 
         elif req.get('method') == 'eth_blockNumber':
-            global latest_block_height
             # latest_block_height, latest_block_hash, latest_block = chain.get_latest_block()
             resp = {'jsonrpc':'2.0', 'result': hex(latest_block_height), 'id':rpc_id}
 
         elif req.get('method') == 'eth_getBlockByNumber':
-            global latest_block_hash
             params = req['params']
             if params[0] == 'latest':
                 block_height = latest_block_height
+                print(block_height)
                 block_hash = blocks_hash[block_height]
                 block_data = blocks_data[block_hash]
             # result = {
@@ -106,7 +108,7 @@ class MainHandler(tornado.web.RequestHandler):
             #     "uncles":[],
             #     "baseFeePerGas":"0x3b9aca00"
             # }
-            result = block_data
+            result = dict(block_data, hash = latest_block_hash)
 
             # latest_block_height, latest_block_hash, latest_block = chain.get_latest_block()
             resp = {'jsonrpc':'2.0', 'result': result, 'id':rpc_id}
@@ -117,21 +119,17 @@ class MainHandler(tornado.web.RequestHandler):
             if block_height == 'latest':
                 block_height = latest_block_height
 
-            blockstate_json = state_tree.get(address.encode('utf8'))
-            blockstate = tornado.escape.json_decode(blockstate_json)
+            state_json = state_tree.get(address.encode('utf8'))
+            state = tornado.escape.json_decode(state_json)
             # print('blockstate', blockstate)
             # print('address', address)
-            resp = {'jsonrpc':'2.0', 'result': blockstate.get('balance', '0x0'), 'id':rpc_id}
+            resp = {'jsonrpc':'2.0', 'result': state.get('balance', '0x0'), 'id':rpc_id}
 
         elif req.get('method') == 'eth_getTransactionReceipt':
-            msg_hash = req['params'][0]
-            # db = database.get_conn()
-            msg_json = db.get(b'msg%s' % msg_hash.encode('utf8'))
-            print(msg_json)
-            msg = tornado.escape.json_decode(msg_json)
+            transaction_hash = req['params'][0]
 
             result = {
-                'transactionHash': msg_hash,
+                'transactionHash': transaction_hash,
                 'transactionIndex': 0,
                 'blockHash': msg_hash,
                 'blockNumber': 0,
@@ -156,20 +154,72 @@ class MainHandler(tornado.web.RequestHandler):
 
         elif req.get('method') == 'eth_getTransactionCount':
             address = web3.Web3.toChecksumAddress(req['params'][0])
-            # db = database.get_conn()
-            prev_hash = db.get(b'chain%s' % address.encode('utf8'))
-            count = 0
-            if prev_hash:
-                msg_json = db.get(b'msg%s' % prev_hash)
-                # print(msg_json)
-                msg = tornado.escape.json_decode(msg_json)
-                # print(msg)
-                count = msg[chain.MSG_HEIGHT]
+            block_height = req['params'][1]
+            if block_height == 'latest':
+                block_height = latest_block_height
+
+            state_json = state_tree.get(address.encode('utf8'))
+            state = tornado.escape.json_decode(state_json)
+            count = len(state.get('transactions', []))
 
             resp = {'jsonrpc':'2.0', 'result': hex(count+1), 'id': rpc_id}
 
         elif req.get('method') == 'eth_getBlockByHash':
             resp = {'jsonrpc':'2.0', 'result': '0x0', 'id': rpc_id}
+
+        elif req.get('method') == 'eth_sendTransaction':
+            transaction = req['params'][0]
+            sender = transaction['from']
+            receiver = transaction['to']
+            gas = int(transaction['gas'], 16)
+            gas_price = int(transaction['gasPrice'], 16)
+            print(int(transaction['nonce'], 16))
+            value = int(transaction['value'], 16)
+            print(transaction)
+
+            sender = web3.Web3.toChecksumAddress(sender)
+            receiver = web3.Web3.toChecksumAddress(receiver)
+
+            sender_state_json = state_tree[sender.encode('utf8')]
+            if sender_state_json:
+                sender_state = tornado.escape.json_decode(sender_state_json)
+            else:
+                sender_state = {'balance': hex(0)}
+            sender_balance = int(sender_state['balance'], 16)
+            assert sender_balance >= value + gas * gas_price
+
+            transaction['input'] = '0x'
+            transaction['transactionIndex'] = '0x0'
+            transaction['blockNumber'] = hex(latest_block_height+1)
+            transaction_json = json.dumps(transaction)
+            transaction_hash = hashlib.sha256(transaction_json.encode('utf8')).hexdigest()
+            transactions_tree[transaction_hash.encode('utf8')] = transaction_json.encode('utf8')
+
+            sender_state['balance'] = hex(sender_balance)
+            sender_state.setdefault('transactions', [])
+            sender_state['transactions'].append(transaction_hash)
+            state_tree[sender.encode('utf8')] = json.dumps(sender_state).encode('utf8')
+
+            receiver_state_json = state_tree[receiver.encode('utf8')]
+            if receiver_state_json:
+                receiver_state = tornado.escape.json_decode(receiver_state_json)
+            else:
+                receiver_state = {'balance': hex(0)}
+            receiver_balance = int(receiver_state['balance'], 16) + value
+            receiver_state['balance'] = hex(receiver_balance)
+
+            # create new block
+            latest_block_height += 1
+            latest_block['parentHash'] = latest_block_hash
+            latest_block['number'] = hex(latest_block_height)
+            latest_block['transactionsRoot'] = '0x%s' % transactions_tree.root_hash.hex()
+            latest_block['stateRoot'] = '0x%s' % state_tree.root_hash.hex()
+            # latest_block['receiptsRoot'] = '0x%s' % receipts_tree.root_hash.hex()
+            blocks_hash.append(latest_block_hash)
+            blocks_data[latest_block_hash] = latest_block
+
+
+            resp = {'jsonrpc':'2.0', 'result': transaction_hash, 'id': rpc_id}
 
         elif req.get('method') == 'eth_sendRawTransaction':
             raw_tx = req['params'][0]
@@ -200,6 +250,13 @@ class MainHandler(tornado.web.RequestHandler):
             tree.forward(['NEW_SUBCHAIN_BLOCK', block_hash, prev_hash.decode('utf8'), tx_from, tx_to, tx.nonce, data, new_timestamp, signature])
 
             resp = {'jsonrpc':'2.0', 'result': '0x%s' % block_hash, 'id': rpc_id}
+
+        elif req.get('method') == 'eth_getTransactionByHash':
+            transaction_hash = req['params'][0]
+            transaction_json = transactions_tree[transaction_hash.replace('0x', '').encode('utf8')]
+            transaction = json.loads(transaction_json)
+
+            resp = {'jsonrpc':'2.0', 'result': transaction, 'id': rpc_id}
 
         elif req.get('method') == 'eth_call':
             resp = {'jsonrpc':'2.0', 'result': '0x0', 'id': rpc_id}
