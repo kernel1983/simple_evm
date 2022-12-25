@@ -2,10 +2,10 @@
 
 # import os
 # import time
-# import hashlib
 # import uuid
 # import tracemalloc
-# import json
+import hashlib
+import json
 
 # import tornado.options
 import tornado.web
@@ -15,7 +15,7 @@ import tornado.gen
 import tornado.escape
 
 import web3
-import rlp
+# import rlp
 import trie
 
 class Application(tornado.web.Application):
@@ -30,11 +30,15 @@ transactions_tree = trie.HexaryTrie({})
 state_tree = trie.HexaryTrie({})
 receipts_tree = trie.HexaryTrie({})
 
-highest_block_height = 0
-highest_block_hash = GENSIS_BLOCK
-highest_block = {
-    'number': hex(highest_block_height),
-    'hash': highest_block_hash,
+for i in range(10):
+    account = web3.Account.from_key(hashlib.sha256(('brownie%s' % i).encode('utf8')).digest())
+    state_tree[account.address.encode('utf8')] = json.dumps({'balance': hex(10**20)}).encode('utf8')
+
+latest_block_height = 0
+latest_block_hash = GENSIS_BLOCK
+latest_block = {
+    'number': hex(latest_block_height),
+    'hash': latest_block_hash,
     'parentHash': '0x0000000000000000000000000000000000000000000000000000000000000000',
     'nonce': '0x0000000000000000',
     'transactionsRoot': '0x%s' % transactions_tree.root_hash.hex(),
@@ -53,8 +57,8 @@ highest_block = {
     'baseFeePerGas': '0x3b9aca00'
 }
 
-blocks_hash = [highest_block_hash]
-blocks_data = {highest_block_hash: highest_block}
+blocks_hash = [latest_block_hash]
+blocks_data = {latest_block_hash: latest_block}
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
@@ -66,21 +70,21 @@ class MainHandler(tornado.web.RequestHandler):
         self.add_header('access-control-allow-origin', 'moz-extension://52ed146e-8386-4e74-9dae-5fe4e9ae20c8')
 
         req = tornado.escape.json_decode(self.request.body)
-        print(req['method'])
+        print(req['method'], req['params'])
         rpc_id = req['id']
         if req.get('method') == 'eth_chainId':
             resp = {'jsonrpc':'2.0', 'result': hex(520), 'id':rpc_id}
 
         elif req.get('method') == 'eth_blockNumber':
-            global highest_block_height
-            # highest_block_height, highest_block_hash, highest_block = chain.get_highest_block()
-            resp = {'jsonrpc':'2.0', 'result': hex(highest_block_height), 'id':rpc_id}
+            global latest_block_height
+            # latest_block_height, latest_block_hash, latest_block = chain.get_latest_block()
+            resp = {'jsonrpc':'2.0', 'result': hex(latest_block_height), 'id':rpc_id}
 
         elif req.get('method') == 'eth_getBlockByNumber':
-            global highest_block_hash
+            global latest_block_hash
             params = req['params']
             if params[0] == 'latest':
-                block_height = highest_block_height
+                block_height = latest_block_height
                 block_hash = blocks_hash[block_height]
                 block_data = blocks_data[block_hash]
             # result = {
@@ -104,44 +108,20 @@ class MainHandler(tornado.web.RequestHandler):
             # }
             result = block_data
 
-            # highest_block_height, highest_block_hash, highest_block = chain.get_highest_block()
+            # latest_block_height, latest_block_hash, latest_block = chain.get_latest_block()
             resp = {'jsonrpc':'2.0', 'result': result, 'id':rpc_id}
 
         elif req.get('method') == 'eth_getBalance':
             address = web3.Web3.toChecksumAddress(req['params'][0])
-            # block_height = req['params'][1]
+            block_height = req['params'][1]
+            if block_height == 'latest':
+                block_height = latest_block_height
 
-            # _highest_block_height, highest_block_hash, _highest_block = chain.get_highest_block()
-            # db = database.get_conn()
-            blockstate_json = db.get(b'blockstate_%s' % highest_block_hash)
+            blockstate_json = state_tree.get(address.encode('utf8'))
             blockstate = tornado.escape.json_decode(blockstate_json)
-            print('blockstate', blockstate)
+            # print('blockstate', blockstate)
             # print('address', address)
-
-            msg_hash = blockstate.get('subchains', {}).get(address)
-            print('msg_hash', msg_hash, address)
-            if msg_hash:
-                msgstate_json = db.get(b'msgstate_%s' % msg_hash.encode('utf8'))
-                msgstate = tornado.escape.json_decode(msgstate_json)
-                print('msgstate', msgstate)
-                balance = msgstate['balances']['SHA']
-            else:
-                msg_hash = b'0'*64
-                balance = 0
-
-            msg_hashes = blockstate.get('balances_to_collect', {}).get(address, [])
-            for msg_hash in msg_hashes:
-                print('msg_hash', msg_hash)
-                msg_json = db.get(b'msg%s' % msg_hash.encode('utf8'))
-                msg = tornado.escape.json_decode(msg_json)
-                print('msg', msg)
-                if 'eth_raw_tx' in msg[chain.MSG_DATA]:
-                    raw_tx = msg[chain.MSG_DATA]['eth_raw_tx']
-                    tx, tx_from, tx_to, _tx_hash = tx_info(raw_tx)
-                    if tx_to == address:
-                        balance += int(tx.value/10**18)
-
-            resp = {'jsonrpc':'2.0', 'result': hex(balance*(10**18)), 'id':rpc_id}
+            resp = {'jsonrpc':'2.0', 'result': blockstate.get('balance', '0x0'), 'id':rpc_id}
 
         elif req.get('method') == 'eth_getTransactionReceipt':
             msg_hash = req['params'][0]
@@ -223,6 +203,14 @@ class MainHandler(tornado.web.RequestHandler):
 
         elif req.get('method') == 'eth_call':
             resp = {'jsonrpc':'2.0', 'result': '0x0', 'id': rpc_id}
+
+        elif req.get('method') == 'eth_accounts':
+            accounts = []
+            for i in range(10):
+                account = web3.Account.from_key(hashlib.sha256(('brownie%s' % i).encode('utf8')).digest())
+                accounts.append(account.address)
+
+            resp = {'jsonrpc':'2.0', 'result': accounts, 'id': rpc_id}
 
         elif req.get('method') == 'web3_clientVersion':
             resp = {'jsonrpc':'2.0', 'result': 'SimpleEVM', 'id': rpc_id}
