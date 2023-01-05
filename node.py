@@ -6,6 +6,7 @@
 # import tracemalloc
 import hashlib
 import json
+import binascii
 
 # import tornado.options
 import tornado.web
@@ -17,6 +18,15 @@ import tornado.escape
 # import rlp
 import web3
 import trie
+import simple_evm
+
+class DictWrap:
+    def __init__(self, d):
+        self.d = d
+    
+    def __getitem__(self, name: str):
+        return tornado.escape.json_decode(self.d[name.encode('utf8')])
+
 
 class Application(tornado.web.Application):
     def __init__(self):
@@ -83,8 +93,8 @@ class MainHandler(tornado.web.RequestHandler):
             resp = {'jsonrpc':'2.0', 'result': hex(latest_block_height), 'id':rpc_id}
 
         elif req.get('method') == 'eth_getBlockByNumber':
-            params = req['params']
-            if params[0] == 'latest':
+            block_height = req['params'][0]
+            if block_height == 'latest':
                 block_height = latest_block_height
                 print(block_height)
                 block_hash = blocks_hash[block_height]
@@ -127,24 +137,40 @@ class MainHandler(tornado.web.RequestHandler):
 
         elif req.get('method') == 'eth_getTransactionReceipt':
             transaction_hash = req['params'][0]
+            receipt_json = receipts_tree[transaction_hash.replace('0x', '').encode('utf8')]
+            receipt = json.loads(receipt_json)
+            block_number = receipt['blockNumber']
 
             result = {
                 'transactionHash': transaction_hash,
-                'transactionIndex': 0,
-                'blockHash': msg_hash,
-                'blockNumber': 0,
-                'from': msg[chain.SENDER],
-                'to': msg[chain.RECEIVER],
+                'transactionIndex': hex(0),
+                'blockHash': blocks_hash[block_number],
+                'blockNumber': hex(block_number),
+                'from': receipt['from'],
                 'cumulativeGasUsed': 0,
                 'gasUsed':0,
-                'contractAddress': '',
+                'contractAddress': None,
+                'status': hex(1),
                 'logs': [],
                 'logsBloom': ''
             }
+            if 'to' in receipt:
+                result['to'] = receipt['to']
+            if 'contractAddress' in receipt:
+                result['contractAddress'] = receipt['contractAddress']
+
             resp = {'jsonrpc':'2.0', 'result': result, 'id': rpc_id}
 
         elif req.get('method') == 'eth_getCode':
-            resp = {'jsonrpc':'2.0', 'result': '0x0208', 'id': rpc_id}
+            address = web3.Web3.toChecksumAddress(req['params'][0])
+            block_height = req['params'][1]
+            if block_height == 'latest':
+                block_height = latest_block_height
+
+            state_json = state_tree.get(address.encode('utf8'))
+            state = tornado.escape.json_decode(state_json)
+
+            resp = {'jsonrpc':'2.0', 'result': state['code'], 'id': rpc_id}
 
         elif req.get('method') == 'eth_gasPrice':
             resp = {'jsonrpc':'2.0', 'result': '0x0', 'id': rpc_id}
@@ -170,15 +196,23 @@ class MainHandler(tornado.web.RequestHandler):
         elif req.get('method') == 'eth_sendTransaction':
             transaction = req['params'][0]
             sender = transaction['from']
-            receiver = transaction['to']
+            sender = web3.Web3.toChecksumAddress(sender)
+            nonce = int(transaction['nonce'], 16)
+            if 'to' in transaction:
+                receiver = transaction['to']
+                receiver = web3.Web3.toChecksumAddress(receiver)
+                contract_address = None
+            else:
+                contract_address = '0x%s' % hashlib.sha256(('%s_%s' % (sender, nonce)).encode('utf8')).hexdigest()[:40]
+                contract_address = web3.Web3.toChecksumAddress(contract_address)
+                print(contract_address)
+                code = transaction['data']
+                print(code)
+
             gas = int(transaction['gas'], 16)
             gas_price = int(transaction['gasPrice'], 16)
-            print(int(transaction['nonce'], 16))
             value = int(transaction['value'], 16)
-            print(transaction)
-
-            sender = web3.Web3.toChecksumAddress(sender)
-            receiver = web3.Web3.toChecksumAddress(receiver)
+            # print(transaction)
 
             sender_state_json = state_tree[sender.encode('utf8')]
             if sender_state_json:
@@ -187,6 +221,7 @@ class MainHandler(tornado.web.RequestHandler):
                 sender_state = {'balance': hex(0)}
             sender_balance = int(sender_state['balance'], 16)
             assert sender_balance >= value + gas * gas_price
+            sender_balance -= (value + gas * gas_price)
 
             transaction['input'] = '0x'
             transaction['transactionIndex'] = '0x0'
@@ -195,18 +230,34 @@ class MainHandler(tornado.web.RequestHandler):
             transaction_hash = hashlib.sha256(transaction_json.encode('utf8')).hexdigest()
             transactions_tree[transaction_hash.encode('utf8')] = transaction_json.encode('utf8')
 
+            receipt = {
+                'blockNumber': latest_block_height+1,
+                'contractAddress': contract_address,
+                'from': sender
+            }
+            if 'to' in transaction:
+                receipt['to'] = receiver
+
+            receipt_json = json.dumps(receipt)
+            receipts_tree[transaction_hash.encode('utf8')] = receipt_json.encode('utf8')
+
             sender_state['balance'] = hex(sender_balance)
             sender_state.setdefault('transactions', [])
             sender_state['transactions'].append(transaction_hash)
             state_tree[sender.encode('utf8')] = json.dumps(sender_state).encode('utf8')
 
-            receiver_state_json = state_tree[receiver.encode('utf8')]
-            if receiver_state_json:
-                receiver_state = tornado.escape.json_decode(receiver_state_json)
+            if 'to' in transaction:
+                receiver_state_json = state_tree[receiver.encode('utf8')]
+                if receiver_state_json:
+                    receiver_state = tornado.escape.json_decode(receiver_state_json)
+                else:
+                    receiver_state = {'balance': hex(0)}
+                receiver_balance = int(receiver_state['balance'], 16) + value
+                receiver_state['balance'] = hex(receiver_balance)
+                state_tree[receiver.encode('utf8')] = json.dumps(receiver_state).encode('utf8')
             else:
-                receiver_state = {'balance': hex(0)}
-            receiver_balance = int(receiver_state['balance'], 16) + value
-            receiver_state['balance'] = hex(receiver_balance)
+                contract_state = {'balance': hex(value), 'code': code}
+                state_tree[contract_address.encode('utf8')] = json.dumps(contract_state).encode('utf8')
 
             # create new block
             latest_block_height += 1
@@ -214,10 +265,9 @@ class MainHandler(tornado.web.RequestHandler):
             latest_block['number'] = hex(latest_block_height)
             latest_block['transactionsRoot'] = '0x%s' % transactions_tree.root_hash.hex()
             latest_block['stateRoot'] = '0x%s' % state_tree.root_hash.hex()
-            # latest_block['receiptsRoot'] = '0x%s' % receipts_tree.root_hash.hex()
+            latest_block['receiptsRoot'] = '0x%s' % receipts_tree.root_hash.hex()
             blocks_hash.append(latest_block_hash)
             blocks_data[latest_block_hash] = latest_block
-
 
             resp = {'jsonrpc':'2.0', 'result': transaction_hash, 'id': rpc_id}
 
@@ -259,7 +309,32 @@ class MainHandler(tornado.web.RequestHandler):
             resp = {'jsonrpc':'2.0', 'result': transaction, 'id': rpc_id}
 
         elif req.get('method') == 'eth_call':
-            resp = {'jsonrpc':'2.0', 'result': '0x0', 'id': rpc_id}
+            param = req['params'][0]
+            sender = param['from']
+            contract_address = param['to']
+            data = param['data'].replace('0x', '')
+            block_height = req['params'][1]
+            if block_height == 'latest':
+                block_height = latest_block_height
+
+            msg = {
+                'data': binascii.unhexlify(data),
+                'value': 0,
+                'origin': sender,
+                'sender': sender,
+                'address': contract_address
+            }
+            m = simple_evm.VM(DictWrap(state_tree), msg)
+            pc = None
+            result = '0x'
+            while pc != m.pc:
+                pc = m.pc
+                r = m.step()
+                if r:
+                    print(r)
+                    result = '0x%s' % (binascii.b2a_hex(b''.join(r[1])).decode('utf8'))
+
+            resp = {'jsonrpc':'2.0', 'result': result, 'id': rpc_id}
 
         elif req.get('method') == 'eth_accounts':
             accounts = []
@@ -277,6 +352,9 @@ class MainHandler(tornado.web.RequestHandler):
 
         elif req.get('method') == 'evm_snapshot':
             resp = {'jsonrpc':'2.0', 'result': hex(1),'id': rpc_id}
+
+        elif req.get('method') == 'evm_increaseTime':
+            resp = {'jsonrpc':'2.0', 'result': 1,'id': rpc_id}
 
         print(resp)
         self.write(tornado.escape.json_encode(resp))

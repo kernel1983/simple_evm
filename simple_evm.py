@@ -12,7 +12,11 @@ class VM:
     def __init__(self, state, msg) -> None:
         self.msg = msg
         self.state = state
-        self.code = state[self.msg['address']]['code']
+        code = state[self.msg['address']]['code']
+        if type(code) is bytes:
+            self.code = code
+        else:
+            self.code = binascii.unhexlify(code.replace('0x', ''))
         self.pc = 0
         self.memory = []
         self.stack = []
@@ -40,6 +44,7 @@ class VM:
                 for exec the "ADD" op
             example : 0x03 0x02 ADD => 0x05
             '''
+            print('ADD')
             # pop the op number
             last_bytes = self.stack.pop() # the last item
             first_bytes = self.stack.pop()
@@ -64,6 +69,7 @@ class VM:
                 for exec the "SUB" op
             example : 0x03 0x02 SUB => 0x01
             '''
+            print('SUB')
             # pop the op number
             a = self.stack.pop() # the last item
             left = int.from_bytes(a, 'big')
@@ -152,6 +158,7 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x14: # EQ
+            print('EQ')
             b = self.stack.pop()
             a = self.stack.pop()
             self.stack.append(bytes([0]*31+[a == b]))
@@ -275,6 +282,26 @@ class VM:
             self.stack.append(len(self.msg['data']).to_bytes(32, 'big'))
             self.pc += 1
 
+
+        elif self.code[self.pc] == 0x38: # CODESIZE
+            print('CODESIZE')
+            self.stack.append(len(self.code).to_bytes(32, 'big'))
+            self.pc += 1
+
+        elif self.code[self.pc] == 0x39: # CODECOPY
+            print('CODECOPY')
+            dest_offset = int.from_bytes(self.stack.pop(), 'big')
+            length = int.from_bytes(self.stack.pop(), 'big')
+            offset = int.from_bytes(self.stack.pop(), 'big')
+            print(dest_offset, offset, length)
+            # print(len(self.code[offset:offset+length]))
+
+            self.alloc(dest_offset+length)
+            for b in self.code[offset:offset+length]:
+                self.memory[offset] = b
+                offset += 1
+            self.pc += 1
+
         elif self.code[self.pc] == 0x50: # POP
             print('POP')
             self.stack.pop()
@@ -385,7 +412,7 @@ class VM:
             # ! I think should assert the offset and the length must be positive number
 
             # return the value
-            return self.memory[offset_num : offset_num + length_num]
+            return 'RETURN', self.memory[offset_num : offset_num + length_num]
 
         elif self.code[self.pc] == 0xfd: # REVERT
             print('REVERT')
@@ -398,7 +425,7 @@ class VM:
             length_num = int.from_bytes(length_bytes, 'big', signed=True)
 
             # return the value
-            return self.memory[offset_num : offset_num + length_num]
+            return 'REVERT', self.memory[offset_num : offset_num + length_num]
 
         else:
             raise
