@@ -59,8 +59,9 @@ class VM:
             # push to the stack (the result)
             self.stack.append(result)
             self.pc += 1
-    
+
         elif self.code[self.pc] == 0x02: # MUL
+            print('MUL')
             pass
 
         elif self.code[self.pc] == 0x03: # SUB
@@ -69,14 +70,17 @@ class VM:
                 for exec the "SUB" op
             example : 0x03 0x02 SUB => 0x01
             '''
-            print('SUB')
+            print('SUB', self.stack)
             # pop the op number
             a = self.stack.pop() # the last item
-            left = int.from_bytes(a, 'big')
             b = self.stack.pop()
-            right = int.from_bytes(b, 'big')
-
-            result = (left - right).to_bytes(32, 'big')
+            left = int.from_bytes(b, 'big')
+            right = int.from_bytes(a, 'big')
+            print('SUB', left, right)
+            if left - right < 0:
+                result = (left - right + 2**256).to_bytes(32, 'big')
+            else:
+                result = (left - right).to_bytes(32, 'big')
 
             # push to the stack (the result)
             self.stack.append(result)
@@ -91,26 +95,26 @@ class VM:
             self.stack.append(result)
             self.pc += 1
 
-        elif self.code[self.pc] == 0x05: # SDIV
-            pass
+        # elif self.code[self.pc] == 0x05: # SDIV
+        #     pass
 
-        elif self.code[self.pc] == 0x06: # MOD
-            pass
+        # elif self.code[self.pc] == 0x06: # MOD
+        #     pass
 
-        elif self.code[self.pc] == 0x07: # SMOD
-            pass
+        # elif self.code[self.pc] == 0x07: # SMOD
+        #     pass
 
-        elif self.code[self.pc] == 0x08: # ADDMOD
-            pass
+        # elif self.code[self.pc] == 0x08: # ADDMOD
+        #     pass
 
-        elif self.code[self.pc] == 0x09: # MULMOD
-            pass
+        # elif self.code[self.pc] == 0x09: # MULMOD
+        #     pass
 
-        elif self.code[self.pc] == 0x0a: # EXP
-            pass
+        # elif self.code[self.pc] == 0x0a: # EXP
+        #     pass
 
-        elif self.code[self.pc] == 0x0b: # SIGNEXTEND
-            pass
+        # elif self.code[self.pc] == 0x0b: # SIGNEXTEND
+        #     pass
 
         elif self.code[self.pc] == 0x10: # LT
             print('LT')
@@ -178,6 +182,7 @@ class VM:
         elif self.code[self.pc] == 0x16: # AND
             b = self.stack.pop()
             a = self.stack.pop()
+            print('AND', b, a)
 
             result = []
             for i in range(32):
@@ -186,16 +191,25 @@ class VM:
             self.pc += 1
 
         elif self.code[self.pc] == 0x17: # OR
-            pass
+            print('OR')
+            b = self.stack.pop()
+            a = self.stack.pop()
+            self.stack.append(bytes([a[i] | b[i] for i in range(32)]))
+            self.pc += 1
 
-        elif self.code[self.pc] == 0x18: # XOR
-            pass
+        # elif self.code[self.pc] == 0x18: # XOR
+        #     pass
 
         elif self.code[self.pc] == 0x19: # NOT
-            pass
+            print('NOT')
+            print(self.stack)
+            obj = self.stack.pop()
+            self.stack.append(bytes([255-i for i in obj]))
+            print(self.stack)
+            self.pc += 1
 
-        elif self.code[self.pc] == 0x1a: # BYTE
-            pass
+        # elif self.code[self.pc] == 0x1a: # BYTE
+        #     pass
 
         elif self.code[self.pc] == 0x1b: # SHL
             print('SHL')
@@ -227,8 +241,8 @@ class VM:
             self.stack.append(result.to_bytes(32, 'big'))
             self.pc += 1
 
-        elif self.code[self.pc] == 0x1d: # SAR
-            print('SAR')
+        # elif self.code[self.pc] == 0x1d: # SAR
+        #     print('SAR')
 
         elif self.code[self.pc] == 0x20: # SHA3
             print('SHA3')
@@ -266,6 +280,7 @@ class VM:
         elif self.code[self.pc] == 0x34: # CALLVALUE
             print('CALLVALUE')
             self.stack.append(self.msg['value'].to_bytes(32, 'big'))
+            print('CALLVALUE', self.msg)
             self.pc += 1
 
         elif self.code[self.pc] == 0x35: # CALLDATALOAD
@@ -282,6 +297,9 @@ class VM:
             self.stack.append(len(self.msg['data']).to_bytes(32, 'big'))
             self.pc += 1
 
+        # elif self.code[self.pc] == 0x37: # CALLDATACOPY
+        #     print('CALLDATACOPY')
+        #     pass
 
         elif self.code[self.pc] == 0x38: # CODESIZE
             print('CODESIZE')
@@ -291,15 +309,15 @@ class VM:
         elif self.code[self.pc] == 0x39: # CODECOPY
             print('CODECOPY')
             dest_offset = int.from_bytes(self.stack.pop(), 'big')
-            length = int.from_bytes(self.stack.pop(), 'big')
             offset = int.from_bytes(self.stack.pop(), 'big')
+            length = int.from_bytes(self.stack.pop(), 'big')
             print(dest_offset, offset, length)
             # print(len(self.code[offset:offset+length]))
 
             self.alloc(dest_offset+length)
             for b in self.code[offset:offset+length]:
-                self.memory[offset] = b
-                offset += 1
+                self.memory[dest_offset] = b
+                dest_offset += 1
             self.pc += 1
 
         elif self.code[self.pc] == 0x50: # POP
@@ -342,7 +360,7 @@ class VM:
             print('SLOAD')
             key = self.stack.pop()
             print(self.state[self.msg['address']]['storage'])
-            value = self.state[self.msg['address']]['storage'][key]
+            value = self.state[self.msg['address']]['storage'].get(key.hex(), b'\x00'*32)
             self.stack.append(value)
             self.pc += 1
 
@@ -351,7 +369,7 @@ class VM:
             key = self.stack.pop()
             value = self.stack.pop()
             print(self.state[self.msg['address']]['storage'])
-            self.state[self.msg['address']]['storage'][key] = value
+            self.state[self.msg['address']]['storage'][key.hex()] = value
             print(self.state[self.msg['address']]['storage'])
             self.pc += 1
 
@@ -376,6 +394,7 @@ class VM:
         elif self.code[self.pc] >= 0x60 and self.code[self.pc] <= 0x7f: # PUSHx
             size = self.code[self.pc] - 0x5f
             print('PUSH', size)
+            print('PUSH', bytes(self.code[self.pc+1:self.pc+1+size]))
             self.stack.append(bytes([0]*(32-size)) + self.code[self.pc+1:self.pc+1+size])
             self.pc += size+1
 
@@ -391,8 +410,8 @@ class VM:
             self.stack[-1], self.stack[-1-size] = self.stack[-1-size], self.stack[-1] 
             self.pc += 1
 
-        elif self.code[self.pc] >= 0xA0 and  self.code[self.pc] <= 0xA4: # LOGx
-            pass
+        # elif self.code[self.pc] >= 0xA0 and  self.code[self.pc] <= 0xA4: # LOGx
+        #     pass
 
         elif self.code[self.pc] == 0xf3: # RETURN
             print('RETURN')
@@ -408,11 +427,12 @@ class VM:
             # the endian use the "big"
             offset_num = int.from_bytes(offset_bytes, 'big', signed=True) # the signed must set True for the negative number
             length_num = int.from_bytes(length_bytes, 'big', signed=True)
+            print('RETURN', offset_num, length_num)
 
             # ! I think should assert the offset and the length must be positive number
 
             # return the value
-            return 'RETURN', self.memory[offset_num : offset_num + length_num]
+            return bytes(self.memory[offset_num : offset_num + length_num]).hex()
 
         elif self.code[self.pc] == 0xfd: # REVERT
             print('REVERT')

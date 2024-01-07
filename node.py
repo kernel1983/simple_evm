@@ -97,8 +97,8 @@ class MainHandler(tornado.web.RequestHandler):
             if block_height == 'latest':
                 block_height = latest_block_height
                 print(block_height)
-                block_hash = blocks_hash[block_height]
-                block_data = blocks_data[block_hash]
+            block_hash = blocks_hash[block_height]
+            block_data = blocks_data[block_hash]
             # result = {
             #     "number":"0x0",
             #     "hash":"0xdac4caf8118a517d53578be2def9a331caabc0115cf805a11d12df1f43ae621f",
@@ -198,6 +198,8 @@ class MainHandler(tornado.web.RequestHandler):
             sender = transaction['from']
             sender = web3.Web3.toChecksumAddress(sender)
             nonce = int(transaction['nonce'], 16)
+            data = transaction['data'].replace('0x', '')
+
             if 'to' in transaction:
                 receiver = transaction['to']
                 receiver = web3.Web3.toChecksumAddress(receiver)
@@ -206,8 +208,8 @@ class MainHandler(tornado.web.RequestHandler):
                 contract_address = '0x%s' % hashlib.sha256(('%s_%s' % (sender, nonce)).encode('utf8')).hexdigest()[:40]
                 contract_address = web3.Web3.toChecksumAddress(contract_address)
                 print(contract_address)
-                code = transaction['data']
-                print(code)
+                #code = transaction['data']
+                #print(code)
 
             gas = int(transaction['gas'], 16)
             gas_price = int(transaction['gasPrice'], 16)
@@ -256,7 +258,29 @@ class MainHandler(tornado.web.RequestHandler):
                 receiver_state['balance'] = hex(receiver_balance)
                 state_tree[receiver.encode('utf8')] = json.dumps(receiver_state).encode('utf8')
             else:
-                contract_state = {'balance': hex(value), 'code': code}
+                code = data.replace('0x', '')
+                contract_state = {'balance': hex(0), 'code': data, 'storage': {}}
+                state_tree[contract_address.encode('utf8')] = json.dumps(contract_state).encode('utf8')
+                msg = {
+                    'data': data,
+                    'value': 0,
+                    'origin': sender,
+                    'sender': sender,
+                    'address': contract_address
+                }
+                m = simple_evm.VM(DictWrap(state_tree), msg)
+                pc = None
+                result = '0x'
+                while pc != m.pc:
+                    pc = m.pc
+                    r = m.step()
+                    if r:
+                        print(r)
+                        #result = '0x%s' % (binascii.b2a_hex(b''.join(r[1])).decode('utf8'))
+                        result = '0x%s' % r
+
+
+                contract_state['code'] = result
                 state_tree[contract_address.encode('utf8')] = json.dumps(contract_state).encode('utf8')
 
             # create new block
@@ -332,7 +356,8 @@ class MainHandler(tornado.web.RequestHandler):
                 r = m.step()
                 if r:
                     print(r)
-                    result = '0x%s' % (binascii.b2a_hex(b''.join(r[1])).decode('utf8'))
+                    #result = '0x%s' % (binascii.b2a_hex(b''.join(r[1])).decode('utf8'))
+                    result = '0x%s' % r
 
             resp = {'jsonrpc':'2.0', 'result': result, 'id': rpc_id}
 
@@ -362,7 +387,7 @@ class MainHandler(tornado.web.RequestHandler):
 
 def main():
     server = Application()
-    server.listen(8546, '0.0.0.0')
+    server.listen(8545, '0.0.0.0')
     tornado.ioloop.IOLoop.instance().start()
 
 if __name__ == '__main__':
