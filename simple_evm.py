@@ -12,7 +12,7 @@ class VM:
     def __init__(self, state, msg) -> None:
         self.msg = msg
         self.state = state
-        code = state[self.msg['address']]['code']
+        code = state[self.msg['address'].encode('utf8')+b'_code']
         if type(code) is bytes:
             self.code = code
         else:
@@ -50,11 +50,11 @@ class VM:
             first_bytes = self.stack.pop()
 
             # the endian use the "big"
-            last_num = int.from_bytes(last_bytes, 'big', signed=True)# the signed must set True for the negative number
-            first_num = int.from_bytes(first_bytes, 'big', signed=True)
+            last_num = int.from_bytes(last_bytes, 'big')
+            first_num = int.from_bytes(first_bytes, 'big')
 
             # computer the result  ! note the value 32 is for make the bytes len == 32
-            result = (first_num + last_num).to_bytes(32, 'big', signed=True)# the signed must set True for the negative number
+            result = ((first_num + last_num) % (2**256)).to_bytes(32, 'big')# the signed must set True for the negative number
 
             # push to the stack (the result)
             self.stack.append(result)
@@ -62,7 +62,15 @@ class VM:
 
         elif self.code[self.pc] == 0x02: # MUL
             print('MUL')
-            pass
+
+            a = self.stack.pop()
+            b = self.stack.pop()
+            left = int.from_bytes(b, 'big')
+            right = int.from_bytes(a, 'big')
+            result = ((left * right) % (2**256)).to_bytes(32, 'big')
+
+            self.stack.append(result)
+            self.pc += 1
 
         elif self.code[self.pc] == 0x03: # SUB
             '''
@@ -74,8 +82,8 @@ class VM:
             # pop the op number
             a = self.stack.pop() # the last item
             b = self.stack.pop()
-            left = int.from_bytes(b, 'big')
-            right = int.from_bytes(a, 'big')
+            left = int.from_bytes(a, 'big')
+            right = int.from_bytes(b, 'big')
             print('SUB', left, right)
             if left - right < 0:
                 result = (left - right + 2**256).to_bytes(32, 'big')
@@ -88,8 +96,8 @@ class VM:
 
         elif self.code[self.pc] == 0x04: # DIV
             a = self.stack.pop()
-            left = int.from_bytes(a, 'big')
             b = self.stack.pop()
+            left = int.from_bytes(a, 'big')
             right = int.from_bytes(b, 'big')
             result = int(left/right).to_bytes(32, 'big')
             self.stack.append(result)
@@ -359,8 +367,10 @@ class VM:
         elif self.code[self.pc] == 0x54: # SLOAD
             print('SLOAD')
             key = self.stack.pop()
-            print(self.state[self.msg['address']]['storage'])
-            value = self.state[self.msg['address']]['storage'].get(key.hex(), b'\x00'*32)
+            print(self.state[self.msg['address'].encode('utf8')+b'_storage_'+key])
+            value = self.state[self.msg['address'].encode('utf8')+b'_storage_'+key]
+            if value == b'':
+                value = b'\x00'*32
             self.stack.append(value)
             self.pc += 1
 
@@ -368,14 +378,18 @@ class VM:
             print('SSTORE')
             key = self.stack.pop()
             value = self.stack.pop()
-            print(self.state[self.msg['address']]['storage'])
-            self.state[self.msg['address']]['storage'][key.hex()] = value
-            print(self.state[self.msg['address']]['storage'])
+            print('SSTORE', key.hex(), value)
+            # print('SSTORE', self.state)
+            print('SSTORE', self.msg['address'])
+            print(self.state[self.msg['address'].encode('utf8')+b'_storage_'+key])
+            self.state[self.msg['address'].encode('utf8')+b'_storage_'+key] = value
+            print(self.state[self.msg['address'].encode('utf8')+b'_storage_'+key])
             self.pc += 1
 
         elif self.code[self.pc] == 0x56: # JUMP
             print('JUMP')
             dist = self.stack.pop()
+            print('JUMP', int.from_bytes(dist, 'big'))
             self.pc = int.from_bytes(dist, 'big')
 
         elif self.code[self.pc] == 0x57: # JUMPI
@@ -425,8 +439,8 @@ class VM:
             length_bytes = self.stack.pop()
 
             # the endian use the "big"
-            offset_num = int.from_bytes(offset_bytes, 'big', signed=True) # the signed must set True for the negative number
-            length_num = int.from_bytes(length_bytes, 'big', signed=True)
+            offset_num = int.from_bytes(offset_bytes, 'big')
+            length_num = int.from_bytes(length_bytes, 'big')
             print('RETURN', offset_num, length_num)
 
             # ! I think should assert the offset and the length must be positive number
@@ -441,8 +455,8 @@ class VM:
             length_bytes = self.stack.pop()
 
             # the endian use the "big"
-            offset_num = int.from_bytes(offset_bytes, 'big', signed=True) # the signed must set True for the negative number
-            length_num = int.from_bytes(length_bytes, 'big', signed=True)
+            offset_num = int.from_bytes(offset_bytes, 'big')
+            length_num = int.from_bytes(length_bytes, 'big')
 
             # return the value
             return 'REVERT', self.memory[offset_num : offset_num + length_num]
